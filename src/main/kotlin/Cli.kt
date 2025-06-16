@@ -4,7 +4,6 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
-import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.path
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
@@ -15,7 +14,7 @@ class Cli : CliktCommand() {
 
     private val numberOfParticles: Int by option("-N", "--number-of-particles")
         .int()
-        .default(250)
+        .default(50)
         .help("Total number of particles")
         .check("Must be greater than 0") { it > 0 }
 
@@ -61,14 +60,18 @@ class Cli : CliktCommand() {
         .default(3.0)
         .check("Obstacle mass must be greater than zero or undefined if it doesn't have mass") { it > 0.0 }
 
+    private val fixedObstacle: Boolean by option("--fixed-obstacle")
+        .flag(default = true)
+        .help("Whether the obstacle is fixed (true) or mobile (false)")
+
     private val containerRadius: Double by option()
         .double()
         .default(5e-2)
         .check("Container must have a radius greater than zero and greater than the obstacle") { it > 0.0 && it > obstacleRadius }
 
-    private val seed: Long by option("-s", "--seed")
-        .long()
-        .default(System.currentTimeMillis())
+    private val seed: Int by option("-s", "--seed")
+        .int()
+        .default(67)
         .help("[Optional] Seed for the RND")
         .check("Seed must be greater or equal to 0.") { it > 0 }
 
@@ -94,6 +97,46 @@ class Cli : CliktCommand() {
         logger.info { "Container Radius: $containerRadius"}
         logger.info { "Obstacle radius: $obstacleRadius" }
         logger.info { "Obstacle Mass: ${obstacleMass?.toString() ?: "Not Defined"}" }
+        logger.info { "Fixed obstacle: $fixedObstacle" }
         logger.info { "Event Density: ${eventDensity?.toString() ?: "All events recorded"}" }
+
+        val fileName = buildString {
+            append("particles=$numberOfParticles")
+            append("_radius=$radius")
+            append("_mass=$mass")
+            append("_v0=$initialVelocity")
+            append("_t=$finalTime")
+            append("_internalCollisions=$enableInternalCollisions")
+            append("_seed=$seed")
+            append("_containerRadius=$containerRadius")
+            append("_obstacleRadius=$obstacleRadius")
+            append("_fixedObstacle=$fixedObstacle")
+            if (obstacleMass != null) {
+                append("_obstacleMass=$obstacleMass")
+            }
+            if (eventDensity != null) {
+                append("_eventDensity=$eventDensity")
+            }
+        }.replace(".", "_").replace("=", "-") + ".csv"
+
+        val outputCsv = outputDirectory.resolve(fileName).toFile()
+
+        val settings = Settings(
+            seed = seed,
+            numberOfParticles = numberOfParticles,
+            radius = radius,
+            mass = mass,
+            initialVelocity = initialVelocity,
+            obstacleRadius = obstacleRadius,
+            obstacleMass = obstacleMass,
+            containerRadius = containerRadius,
+            outputFile = outputCsv,
+            finalTime = finalTime,
+            internalCollisions = enableInternalCollisions,
+            eventDensity = eventDensity,
+            fixedObstacle = fixedObstacle
+        )
+
+        runSimulation(settings)
     }
 }
