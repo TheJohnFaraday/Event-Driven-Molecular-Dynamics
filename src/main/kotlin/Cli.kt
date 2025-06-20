@@ -61,7 +61,7 @@ class Cli : CliktCommand() {
         .check("Obstacle mass must be greater than zero or undefined if it doesn't have mass") { it > 0.0 }
 
     private val fixedObstacle: Boolean by option("--fixed-obstacle")
-        .flag(default = true)
+        .flag("--no-fixed-obstacle", default = true)
         .help("Whether the obstacle is fixed (true) or mobile (false)")
 
     private val containerRadius: Double by option()

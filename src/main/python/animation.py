@@ -5,12 +5,14 @@ import argparse
 import os
 
 # Parameters
-L = 0.1     # Diameter of outer ring
-R = 0.005   # Radius of inner obstacle
+L = 0.1  # Diameter of outer ring
+R = 0.005  # Radius of inner obstacle
 particle_radius = 5e-4
 
 # Argument parser
-parser = argparse.ArgumentParser(description="Animate particle states in circular container.")
+parser = argparse.ArgumentParser(
+    description="Animate particle states in circular container."
+)
 parser.add_argument(
     "-f", "--file", type=str, required=True, help="Path to the states_...txt file"
 )
@@ -48,16 +50,16 @@ colors = np.random.rand(num_particles, 3)
 
 # Create figure
 fig, ax = plt.subplots()
-ax.set_aspect('equal')
-ax.set_xlim(-L/2 - 0.005, L/2 + 0.005)
-ax.set_ylim(-L/2 - 0.005, L/2 + 0.005)
+ax.set_aspect("equal")
+ax.set_xlim(-L / 2 - 0.005, L / 2 + 0.005)
+ax.set_ylim(-L / 2 - 0.005, L / 2 + 0.005)
 
 # Draw container boundary
-circle_recinto = plt.Circle((0, 0), L/2, color='orange', fill=False, linewidth=2)
+circle_recinto = plt.Circle((0, 0), L / 2, color="orange", fill=False, linewidth=2)
 ax.add_artist(circle_recinto)
 
 # Draw obstacle
-obstacle_circle = plt.Circle((0, 0), R, color='gray')
+obstacle_circle = plt.Circle((0, 0), R, color="gray")
 ax.add_artist(obstacle_circle)
 
 # Draw particles
@@ -68,7 +70,8 @@ for i in range(num_particles):
     particle_circles.append(c)
 
 # Text for displaying time
-time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, fontsize=12, color='blue')
+time_text = ax.text(0.02, 0.95, "", transform=ax.transAxes, fontsize=12, color="blue")
+
 
 # Update function
 def update(i):
@@ -79,6 +82,7 @@ def update(i):
     obstacle_circle.center = (ox, oy)
     time_text.set_text(f"t = {time_stamps[i]:.3f} s")
     return particle_circles + [obstacle_circle, time_text]
+
 
 # Create animation
 TOTAL_DURATION = 10  # seconds
@@ -100,7 +104,7 @@ ani.save(
     writer="ffmpeg",
     fps=len(frames) // TOTAL_DURATION,
     dpi=100,
-    extra_args=["-crf", "27", "-preset", "veryfast"]
+    extra_args=["-crf", "27", "-preset", "veryfast"],
 )
 print(f"Animation saved successfully at: {output_path}")
 
