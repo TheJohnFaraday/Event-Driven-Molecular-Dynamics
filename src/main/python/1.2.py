@@ -6,19 +6,24 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from typing import List, Tuple
 
-L = 0.1 
+L = 0.1
 R = 0.005
 DT_FIXED = 0.1
 MASS = 1.0
 SKIP_TIME = 2.0
+particle_radius = 5e-4
+
 
 def extract_v0_from_filename(filename: str) -> float:
-    match = re.search(r'v0-([0-9_\.]+)', filename)
+    match = re.search(r"v0-([0-9_\.]+)", filename)
     if match:
-        return float(match.group(1).replace('_', '.').rstrip('.'))
+        return float(match.group(1).replace("_", ".").rstrip("."))
     raise ValueError(f"No se pudo extraer v0 del nombre: {filename}")
 
-def read_states_and_calculate_pressure(filename: str) -> Tuple[List[float], List[float], List[float]]:
+
+def read_states_and_calculate_pressure(
+    filename: str,
+) -> Tuple[List[float], List[float], List[float]]:
     with open(filename, "r") as f:
         content = f.read()
 
@@ -55,13 +60,15 @@ def read_states_and_calculate_pressure(filename: str) -> Tuple[List[float], List
                     is_obstacle_collision = True
 
                 if is_wall_collision or is_obstacle_collision:
-                    collision_data.append({
-                        "time": time,
-                        "particle_id": int(particle_id),
-                        "v_radial": abs(v_radial),
-                        "mass": 1.0,
-                        "type": "WALL" if is_wall_collision else "OBSTACLE",
-                    })
+                    collision_data.append(
+                        {
+                            "time": time,
+                            "particle_id": int(particle_id),
+                            "v_radial": abs(v_radial),
+                            "mass": 1.0,
+                            "type": "WALL" if is_wall_collision else "OBSTACLE",
+                        }
+                    )
 
     if not collision_data:
         return [], [], []
@@ -70,13 +77,16 @@ def read_states_and_calculate_pressure(filename: str) -> Tuple[List[float], List
     df["impulse"] = 2 * df["mass"] * df["v_radial"]
     df["time_bin"] = np.floor(df["time"] / DT_FIXED).astype(int)
 
-    impulse_sums = df.groupby(["time_bin", "type"])["impulse"].sum().unstack(fill_value=0.0)
+    impulse_sums = (
+        df.groupby(["time_bin", "type"])["impulse"].sum().unstack(fill_value=0.0)
+    )
 
     perimeter_container = 2 * np.pi * ((L / 2) - particle_radius)
     times = impulse_sums.index * DT_FIXED
     p_wall = impulse_sums.get("WALL", 0) / (DT_FIXED * perimeter_container)
 
     return times.tolist(), p_wall.tolist(), impulse_sums.get("OBSTACLE", 0).tolist()
+
 
 def calcular_temp_media(filename: str, desde_t: float) -> float:
     with open(filename, "r") as f:
@@ -105,6 +115,7 @@ def calcular_temp_media(filename: str, desde_t: float) -> float:
             count += 1
 
     return v2_total / count if count > 0 else 0
+
 
 def main():
     parser = argparse.ArgumentParser(description="Graficar P promedio vs T relativa")
@@ -143,8 +154,8 @@ def main():
     plt.grid(True)
     plt.tight_layout()
     plt.savefig("1.2_presion_vs_temperatura.png", dpi=300)
-    plt.show()
+    # plt.show()
+
 
 if __name__ == "__main__":
     main()
-
