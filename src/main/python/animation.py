@@ -8,6 +8,7 @@ import os
 L = 0.1  # Diameter of outer ring
 R = 0.005  # Radius of inner obstacle
 particle_radius = 5e-4
+STRIDE = 10
 
 # Argument parser
 parser = argparse.ArgumentParser(
@@ -34,7 +35,7 @@ frames = []
 obstacle_positions = []
 time_stamps = []
 
-for block in raw_lines:
+for block in raw_lines[::STRIDE]:
     lines = block.strip().split("\n")
     if len(lines) < 2:
         continue
