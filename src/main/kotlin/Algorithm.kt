@@ -46,8 +46,8 @@ class ParticleMotor(
     }
 
     fun resolve(c: CollisionData) {
-        val a = c.a
-        val b = c.b
+        val a = c.particleA
+        val b = c.particleB
         if (b == null) {
             var nx = a.x
             var ny = a.y
