@@ -11,27 +11,45 @@ fun runSimulation(
         settings.numberOfParticles, settings.initialVelocity, settings.radius, settings.mass,
         settings.containerRadius, settings.obstacleRadius, settings.fixedObstacle, settings.seed
     )
-
-    val motor = ParticleMotor(particles, settings.containerRadius)
-    val priorityQueue = PriorityQueue<CollisionData>()
+    val algorithm = Algorithm(settings.containerRadius)
+    val queue = PriorityQueue<CollisionData>()
 
     var now = 0.0
-    particles.forEach { particle -> priorityQueue.addAll(motor.predict(particle, now)) }
+    particles.forEach { particle ->
+        queue.addAll(
+            algorithm.predictParticleCollision(
+                particle,
+                now,
+                particles
+            )
+        )
+    }
 
     settings.outputFile.bufferedWriter().use { out ->
         write(out, now, particles)
+
         while (now < settings.finalTime) {
-            val collisionData = priorityQueue.poll() ?: break
-            if (!collisionData.isValid()) continue
+            val collisionData = queue.poll() ?: break
+            if (!collisionData.isValid()) {
+                continue
+            }
+
             val dt = collisionData.time - now
-
-            particles.forEach { it.move(dt) }
-
             now = collisionData.time
-            motor.resolve(collisionData)
 
-            priorityQueue.addAll(motor.predict(collisionData.a, now))
-            collisionData.b?.let { priorityQueue.addAll(motor.predict(it, now)) }
+            particles.map { it.move(dt) }
+
+            algorithm.resolveCollisions(collisionData)
+            queue.addAll(algorithm.predictParticleCollision(collisionData.particleA, now, particles))
+            collisionData.particleB?.let {
+                queue.addAll(
+                    algorithm.predictParticleCollision(
+                        it,
+                        now,
+                        particles
+                    )
+                )
+            }
 
             write(out, now, particles)
         }

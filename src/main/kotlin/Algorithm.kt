@@ -2,113 +2,152 @@ package ar.edu.itba.ss
 
 import kotlin.math.*
 
-class ParticleMotor(
-    private val particles: List<Particle>,
+private data class CollisionVelocity(
+    val vfx: Double,
+    val vfy: Double
+)
+
+class Algorithm(
     private val containerR: Double
 ) {
+    fun predictParticleCollision(
+        particle: Particle,
+        now: Double,
+        particles: List<Particle>
+    ): List<CollisionData> {
+        val collisions = mutableListOf<CollisionData>()
 
-    fun predict(p: Particle, now: Double): List<CollisionData> {
-        val list = mutableListOf<CollisionData>()
-        val A = p.vx * p.vx + p.vy * p.vy
-        if (A > 0) {
-            val dx = p.x
-            val dy = p.y
-            val B = 2 * (dx * p.vx + dy * p.vy)
-            val C = dx * dx + dy * dy - (containerR - p.r).pow(2)
-            val disc = B * B - 4 * A * C
-            if (disc > 0) {
-                var t = (-B + sqrt(disc)) / (2 * A)
-                if (t <= 0) t = (-B - sqrt(disc)) / (2 * A)
-                if (t > 1e-12) list.add(CollisionData(now + t, p, null))
+        particleCollision(particle, now)?.let { collisions.add(it) }
+
+        particles.forEach { q ->
+            if (q == particle) {
+                return@forEach
             }
-        }
-
-        for (q in particles) {
-            if (q == p) continue
-            val dx = q.x - p.x
-            val dy = q.y - p.y
-            val dvx = q.vx - p.vx
-            val dvy = q.vy - p.vy
+            val dx = q.x - particle.x
+            val dy = q.y - particle.y
+            val dvx = q.vx - particle.vx
+            val dvy = q.vy - particle.vy
             val dvdr = dx * dvx + dy * dvy
-            if (dvdr >= 0) continue
+            if (dvdr >= 0) {
+                // inf
+                return@forEach
+            }
             val dvdv = dvx * dvx + dvy * dvy
             val drdr = dx * dx + dy * dy
-            val sigma = p.r + q.r
-            val d = dvdr * dvdr - dvdv * (drdr - sigma * sigma)
-            if (d < 0) continue
-            val t = -(dvdr + sqrt(d)) / dvdv
-            if (t > 1e-12) {
-                list.add(CollisionData(now + t, p, q))
+            val sigma2 = (particle.radius + q.radius) * (particle.radius + q.radius)
+            val d = dvdr * dvdr - dvdv * (drdr - sigma2)
+            if (d < 0) {
+                // inf
+                return@forEach
+            }
+            // otherwise
+            val t_c = -(dvdr + sqrt(d)) / dvdv
+            if (t_c > EPSILON) {
+                collisions.add(CollisionData(now + t_c, particle, q))
             }
         }
 
-        return list
+        return collisions
     }
 
-    fun resolve(c: CollisionData) {
-        val a = c.particleA
-        val b = c.particleB
-        if (b == null) {
-            var nx = a.x
-            var ny = a.y
-            val norm = hypot(nx, ny)
-            nx /= norm
-            ny /= norm
-            val vDotN = a.vx * nx + a.vy * ny
-            a.vx -= 2 * vDotN * nx
-            a.vy -= 2 * vDotN * ny
-            a.collisions++
-            return
-        }
-
-        if (a.isFixed() || b.isFixed()) {
-            val particle = if (a.isFixed()) b else a
-            val dx = particle.x
-            val dy = particle.y
-            val alpha = atan2(dy, dx)
-            val (vfx, vfy) = computeCollisionVelocity(particle.vx, particle.vy, alpha, 1.0, 1.0)
-            particle.vx = vfx
-            particle.vy = vfy
+    fun resolveCollisions(collisionData: CollisionData) =
+        if (collisionData.particleB == null) {
+            singleParticleCollision(collisionData.particleA)
         } else {
-            impactNextTc(a, b)
+            doubleParticleCollision(collisionData.particleA, collisionData.particleB)
         }
 
-        a.collisions++
-        b.collisions++
-    }
 
-    fun computeCollisionVelocity(vx: Double, vy: Double, alpha: Double, cn: Double, ct: Double): Pair<Double, Double> {
+    private fun computeCollisionVelocity(
+        vx: Double,
+        vy: Double,
+        alpha: Double,
+        cn: Double,
+        ct: Double
+    ): CollisionVelocity {
         val cosA = cos(alpha)
         val sinA = sin(alpha)
         val cos2 = cosA * cosA
         val sin2 = sinA * sinA
-        val sincos = sinA * cosA
 
         val m11 = -cn * cos2 + ct * sin2
-        val m12 = -(cn + ct) * sincos
+        val m12 = -(cn + ct) * sinA * cosA
         val m21 = m12
         val m22 = -cn * sin2 + ct * cos2
 
         val vfx = m11 * vx + m12 * vy
         val vfy = m21 * vx + m22 * vy
 
-        return vfx to vfy
+        return CollisionVelocity(vfx = vfx, vfy = vfy)
     }
 
-    fun impactNextTc(p1: Particle, p2: Particle) {
+    private fun nextTcImpact(p1: Particle, p2: Particle) {
         val dxr = p2.x - p1.x
         val dyr = p2.y - p1.y
         val dvx = p2.vx - p1.vx
         val dvy = p2.vy - p1.vy
-        val sigma = p1.r + p2.r
+        val sigma = p1.radius + p2.radius
         val drdv = dxr * dvx + dyr * dvy
-        val J = (2 * p1.m * p2.m * drdv) / (sigma * (p1.m + p2.m))
+        val J = (2 * p1.mass * p2.mass * drdv) / (sigma * (p1.mass + p2.mass))
         val Jx = (J * dxr) / sigma
         val Jy = (J * dyr) / sigma
 
-        p1.vx += Jx / p1.m
-        p1.vy += Jy / p1.m
-        p2.vx -= Jx / p2.m
-        p2.vy -= Jy / p2.m
+        p1.vx += Jx / p1.mass
+        p1.vy += Jy / p1.mass
+        p2.vx -= Jx / p2.mass
+        p2.vy -= Jy / p2.mass
+    }
+
+    private fun particleCollision(particle: Particle, now: Double): CollisionData? {
+        // x = ( -b +- sqrt(b^2 - 4ac) ) / 2a
+        val x2y2 = particle.x * particle.x + particle.y * particle.y
+        val a = particle.vx * particle.vx + particle.vy * particle.vy
+        if (a <= 0) {
+            return null
+        }
+        val b = 2 * (particle.x * particle.vx + particle.y * particle.vy)
+        val c = x2y2 - (containerR - particle.radius).pow(2)
+        val discriminant = b * b - 4 * a * c
+        if (discriminant <= 0) {
+            return null
+        }
+        var t = (-b + sqrt(discriminant)) / (2 * a)
+        if (t <= 0) {
+            t = (-b - sqrt(discriminant)) / (2 * a)
+        }
+        if (t <= EPSILON) {
+            return null
+        }
+        return CollisionData(now + t, particle, null)
+    }
+
+    private fun singleParticleCollision(particle: Particle) {
+        val (nx, ny) = particle.positionNorm()
+        val vDotN = particle.vx * nx + particle.vy * ny
+        particle.vx -= 2 * vDotN * nx
+        particle.vy -= 2 * vDotN * ny
+        particle.collisions++
+    }
+
+    private fun doubleParticleCollision(particleA: Particle, particleB: Particle) {
+        if (!particleA.isFixed() && !particleB.isFixed()) {
+            nextTcImpact(particleA, particleB)
+        } else {
+            val particle = if (particleA.isFixed()) particleB else particleA
+            val dx = particle.x
+            val dy = particle.y
+            val alpha = atan2(dy, dx)
+            val (vfx, vfy) = computeCollisionVelocity(particle.vx, particle.vy, alpha, 1.0, 1.0)
+            particle.vx = vfx
+            particle.vy = vfy
+        }
+
+        particleA.collisions++
+        particleB.collisions++
+    }
+
+
+    companion object {
+        private const val EPSILON = 1e-12
     }
 }

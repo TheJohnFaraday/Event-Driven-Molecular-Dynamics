@@ -2,16 +2,18 @@ package ar.edu.itba.ss
 
 class CollisionData(
     val time: Double,
-    val a: Particle,
-    val b: Particle?
+    val particleA: Particle,
+    val particleB: Particle?
 ) : Comparable<CollisionData> {
 
-    private val countA: Int = a.collisions
-    private val countB: Int = b?.collisions ?: -1
+    private val countA: Int = particleA.collisions
+    private val countB: Int = particleB?.collisions ?: -1
 
     fun isValid(): Boolean {
-        if (a.collisions != countA) return false
-        return b == null || b.collisions == countB
+        if (particleA.collisions != countA) {
+            return false
+        }
+        return particleB == null || particleB.collisions == countB
     }
 
     override fun compareTo(other: CollisionData): Int {
@@ -19,6 +21,6 @@ class CollisionData(
     }
 
     override fun toString(): String {
-        return "CollisionData(time=$time, a=$a, b=$b)"
+        return "CollisionData(time=$time, particleA=$particleA, particleB=$particleB)"
     }
 }

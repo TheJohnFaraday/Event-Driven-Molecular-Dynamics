@@ -29,7 +29,7 @@ class ParticleGenerator {
             val y = r * sin(angle)
 
             val ok = list.none { p ->
-                hypot(p.x - x, p.y - y) < p.r + smallR
+                hypot(p.x - x, p.y - y) < p.radius + smallR
             }
 
             if (!ok) continue
