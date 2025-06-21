@@ -1,6 +1,7 @@
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import pandas as pd
 
@@ -24,6 +25,25 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+
+
+def _pow10_fmt(y, _):
+    """Return labels like 1.5×10^4 for scientific notation on axis."""
+    if y == 0:
+        return "0"
+    exp = int(np.log10(abs(y)))
+    mantissa = y / (10**exp)
+
+    # # If mantissa is close to 1, just show 10^exp
+    # if abs(mantissa - 1.0) < 0.05:
+    #     if exp == 0:
+    #         return "1"
+    #     return rf"$10^{{{exp}}}$"
+
+    # Otherwise show mantissa × 10^exp
+    if exp == 0:
+        return f"{mantissa:.1f}"
+    return rf"${mantissa:.1f} \times 10^{{{exp}}}$"
 
 
 def read_states_and_calculate_pressure(filename: str):
@@ -99,8 +119,8 @@ def read_states_and_calculate_pressure(filename: str):
     perimeter_container = 2 * np.pi * ((L / 2) - particle_radius)
     perimeter_obstacle = 2 * np.pi * (R + particle_radius)
 
-    #perimeter_container = 2 * np.pi * (L / 2)
-    #perimeter_obstacle = 2 * np.pi * R
+    # perimeter_container = 2 * np.pi * (L / 2)
+    # perimeter_obstacle = 2 * np.pi * R
 
     times = impulse_sums.index * DT_FIXED
     p_wall = impulse_sums.get("WALL", 0) / (DT_FIXED * perimeter_container)
@@ -112,18 +132,23 @@ def read_states_and_calculate_pressure(filename: str):
 def plot_pressures(times, p_wall, p_obstacle):
     plt.figure(figsize=(10, 6))
     viridis = cm.get_cmap("viridis")
+
+    ax = plt.gca()
     plt.plot(times, p_wall, label="P sobre recinto", color=viridis(0.2))
     plt.plot(times, p_obstacle, label="P sobre obstáculo", color=viridis(0.7))
+
+    # Apply pretty scientific notation formatting to Y axis
+    ax.yaxis.set_major_formatter(FuncFormatter(_pow10_fmt))
+
     plt.xlabel("Tiempo [s]")
     plt.ylabel("Presión [Pa]")
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.6)
     plt.tight_layout()
     plt.savefig("1.1_presion_vs_tiempo.png", dpi=300)
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
     times, p_wall, p_obstacle = read_states_and_calculate_pressure(args.output_file)
     plot_pressures(times, p_wall, p_obstacle)
-
