@@ -145,7 +145,7 @@ def plot_pressures(times, p_wall, p_obstacle):
     plt.legend()
     plt.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.6)
     plt.tight_layout()
-    plt.savefig("1.1_presion_vs_tiempo.png", dpi=300)
+    plt.savefig("analysis/1.1_presion_vs_tiempo.png", dpi=300)
     # plt.show()
 
 
