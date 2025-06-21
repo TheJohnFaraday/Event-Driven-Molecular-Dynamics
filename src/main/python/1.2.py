@@ -47,11 +47,11 @@ def read_states_and_calculate_pressure(filename: str) -> Tuple[List[float], List
 
             if particle_id > 0:
                 wall_distance = (L / 2) - r - 5e-4
-                if wall_distance <= 1e-5 and v_radial > 0:
+                if wall_distance <= 1e-4 and v_radial > 0:
                     is_wall_collision = True
 
                 obstacle_distance = r - (R + 5e-4)
-                if obstacle_distance <= 1e-5 and v_radial < 0:
+                if obstacle_distance <= 1e-4 and v_radial < 0:
                     is_obstacle_collision = True
 
                 if is_wall_collision or is_obstacle_collision:
@@ -72,7 +72,7 @@ def read_states_and_calculate_pressure(filename: str) -> Tuple[List[float], List
 
     impulse_sums = df.groupby(["time_bin", "type"])["impulse"].sum().unstack(fill_value=0.0)
 
-    perimeter_container = 2 * np.pi * (L / 2)
+    perimeter_container = 2 * np.pi * ((L / 2) - particle_radius)
     times = impulse_sums.index * DT_FIXED
     p_wall = impulse_sums.get("WALL", 0) / (DT_FIXED * perimeter_container)
 

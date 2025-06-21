@@ -59,12 +59,12 @@ def read_states_and_calculate_pressure(filename: str):
             if particle_id > 0:  # Only for particles, not obstacle
                 # Check wall collision (particle reaches container boundary)
                 wall_distance = (L / 2) - r - particle_radius
-                if wall_distance <= 1e-5 and v_radial > 0:
+                if wall_distance <= 1e-4 and v_radial > 0:
                     is_wall_collision = True
 
                 # Check obstacle collision (particle hits obstacle)
                 obstacle_distance = r - (particle_radius + R)
-                if obstacle_distance <= 1e-5 and v_radial < 0:
+                if obstacle_distance <= 1e-4 and v_radial < 0:
                     is_obstacle_collision = True
 
                 if is_wall_collision or is_obstacle_collision:
@@ -96,8 +96,11 @@ def read_states_and_calculate_pressure(filename: str):
     )
 
     # Calculate pressure: P = J / (dt * perimeter)
-    perimeter_container = 2 * np.pi * (L / 2)
-    perimeter_obstacle = 2 * np.pi * R
+    perimeter_container = 2 * np.pi * ((L / 2) - particle_radius)
+    perimeter_obstacle = 2 * np.pi * (R + particle_radius)
+
+    #perimeter_container = 2 * np.pi * (L / 2)
+    #perimeter_obstacle = 2 * np.pi * R
 
     times = impulse_sums.index * DT_FIXED
     p_wall = impulse_sums.get("WALL", 0) / (DT_FIXED * perimeter_container)
