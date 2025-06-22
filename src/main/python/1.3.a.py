@@ -173,12 +173,13 @@ def analyze_obstacle_collisions_from_streaming(
 
     primeros_choques = np.array(sorted(primer_choque_por_particula.values()))
 
-    # Calculate t90% - since streaming stopped at 90%, the last first-collision time IS the t90%
-    # This is the time when the 90th percentile particle collided for the first time
-    first_time_t90 = primeros_choques[-1]  # Last (and 90th percentile) first collision
+    # Calculate t90% - since we stopped reading when we reached the target number of particles,
+    # the t90% is the time of the last (highest index) first collision we detected
+    # This represents when exactly 90% of all possible particles have collided for the first time
+    first_time_t90 = primeros_choques[-1]  # The time when the target was reached
     analysis_time = first_time_t90
     
-    print(f"  t₉₀% calculated as: {first_time_t90:.6f} s (last first-collision time)")
+    print(f"  t₉₀% calculated as: {first_time_t90:.6f} s (time when target particles reached)")
     print(f"  Unique particles found: {len(primeros_choques)} (should be ~90% of colliding particles)")
     print(f"  First 5 collision times: {primeros_choques[:5]}")
     print(f"  Last 5 collision times: {primeros_choques[-5:]}")
