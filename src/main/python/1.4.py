@@ -174,28 +174,28 @@ def main():
     ax_dcm.plot(sorted_times, fit_line, color="#A23B72", linewidth=3, 
             label=f"Ajuste Lineal (D={D:.2e} m²/s)")
     
-    title_text_dcm = f"Desplazamiento Cuadrático Medio - Partícula Grande (M=3kg)\n{len(all_files)} archivos, dt={dt_bin:.3f}s"
-    if args.tmax is not None:
-        title_text_dcm += f"\nRango: 0.0 - {t_max:.2f} s"
+    #title_text_dcm = f"Desplazamiento Cuadrático Medio - Partícula Grande (M=3kg)\n{len(all_files)} archivos, dt={dt_bin:.3f}s"
+    #if args.tmax is not None:
+    #    title_text_dcm += f"\nRango: 0.0 - {t_max:.2f} s"
     
-    ax_dcm.set_title(title_text_dcm, fontsize=16, fontweight='bold', pad=20)
-    ax_dcm.set_xlabel("Tiempo (s)", fontsize=14, fontweight='bold')
-    ax_dcm.set_ylabel("DCM (m²)", fontsize=14, fontweight='bold')
+    #ax_dcm.set_title(title_text_dcm, fontsize=16, fontweight='bold', pad=20)
+    ax_dcm.set_xlabel("Tiempo (s)", fontsize=14)
+    ax_dcm.set_ylabel("DCM (m²)", fontsize=14)
     
     ax_dcm.legend(loc="upper left", fontsize=12, framealpha=0.9, fancybox=True, shadow=True)
     ax_dcm.grid(True, linestyle="--", alpha=0.3, color='gray')
     ax_dcm.set_ylim(bottom=0)
     
-    stats_text_dcm = f"R² = {r_squared:.4f}\nN = {len(all_files)} archivos\nPuntos = {len(sorted_times)}\nD = {D:.2e} m²/s"
-    ax_dcm.text(0.02, 0.98, stats_text_dcm, transform=ax_dcm.transAxes, 
-            verticalalignment='top', fontsize=11,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    #stats_text_dcm = f"R² = {r_squared:.4f}\nN = {len(all_files)} archivos\nPuntos = {len(sorted_times)}\nD = {D:.2e} m²/s"
+    #ax_dcm.text(0.02, 0.98, stats_text_dcm, transform=ax_dcm.transAxes,
+    #        verticalalignment='top', fontsize=11,
+    #        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     
     ax_dcm.tick_params(axis='both', which='major', labelsize=12)
     ax_dcm.yaxis.set_major_formatter(FuncFormatter(format_func))
     fig_dcm.tight_layout()
     
-    dcm_plot_filename = f"plots/v0=1.0_dcm.png"
+    dcm_plot_filename = f"analysis/v0=1.0_dcm.png"
     fig_dcm.savefig(dcm_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Gráfico de DCM guardado en: {dcm_plot_filename}")
 
@@ -203,9 +203,9 @@ def main():
     fig_error, ax_error = plt.subplots(figsize=(12, 8))
     
     ax_error.plot(d_range, fit_errors, color="#007ACC", linewidth=2.5, label="Error del ajuste E(D)")
-    ax_error.set_title("Error del Ajuste en Función del Coeficiente de Difusión", fontsize=14, fontweight='bold')
-    ax_error.set_xlabel("Coeficiente de Difusión D (m²/s)", fontsize=14, fontweight='bold')
-    ax_error.set_ylabel("Error Cuadrático Total E(D)", fontsize=14, fontweight='bold')
+    #ax_error.set_title("Error del Ajuste en Función del Coeficiente de Difusión", fontsize=14, fontweight='bold')
+    ax_error.set_xlabel("Coeficiente de Difusión D (m²/s)", fontsize=14)
+    ax_error.set_ylabel("Error Cuadrático Total E(D)", fontsize=14)
     
     min_error_d = optimal_D
     min_error = np.min(fit_errors)
@@ -218,7 +218,7 @@ def main():
     ax_error.yaxis.set_major_formatter(FuncFormatter(format_func))
     fig_error.tight_layout()
 
-    error_plot_filename = f"plots/v0=1.0_dcm_error.png"
+    error_plot_filename = f"analysis/v0=1.0_dcm_error.png"
     fig_error.savefig(error_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Gráfico de Error guardado en: {error_plot_filename}")
     
