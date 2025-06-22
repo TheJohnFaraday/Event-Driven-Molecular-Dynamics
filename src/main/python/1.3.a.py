@@ -11,21 +11,46 @@ R = 0.005  # Obstacle radius
 particle_radius = 5e-4
 
 parser = argparse.ArgumentParser(
-    description="Analyze first-time collisions from multiple simulation files."
+    description="Analyze first-time collisions from multiple simulation files.",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Examples:
+  # Single file per velocity
+  python 1.3.a.py --v1 file_v1.csv --v3 file_v3.csv --v6 file_v6.csv
+  
+  # Multiple files per velocity (will be averaged)
+  python 1.3.a.py --v1 file1_v1.csv file2_v1.csv --v3 file1_v3.csv file2_v3.csv
+  
+  # Mixed: some velocities with multiple files, others with single files
+  python 1.3.a.py --v1 run1.csv run2.csv run3.csv --v3 single_run.csv --v6 test1.csv test2.csv
+""",
 )
+
+# Add velocity-specific arguments
+parser.add_argument("--v1", nargs="+", type=str, help="Files for v₀ = 1.0 m/s")
+parser.add_argument("--v3", nargs="+", type=str, help="Files for v₀ = 3.0 m/s")
+parser.add_argument("--v6", nargs="+", type=str, help="Files for v₀ = 6.0 m/s")
+parser.add_argument("--v10", nargs="+", type=str, help="Files for v₀ = 10.0 m/s")
+# Add more common velocities
+parser.add_argument("--v2", nargs="+", type=str, help="Files for v₀ = 2.0 m/s")
+parser.add_argument("--v4", nargs="+", type=str, help="Files for v₀ = 4.0 m/s")
+parser.add_argument("--v5", nargs="+", type=str, help="Files for v₀ = 5.0 m/s")
+parser.add_argument("--v8", nargs="+", type=str, help="Files for v₀ = 8.0 m/s")
+
+# Keep old format for backward compatibility
 parser.add_argument(
     "-f",
     "--output_file",
     nargs="+",
     type=str,
-    help="List of simulation output files to analyze",
+    help="[DEPRECATED] Use --v1, --v3, etc. instead",
 )
 parser.add_argument(
     "-v",
     "--velocities",
     nargs="+",
     type=float,
-    help="Initial velocities corresponding to each file (optional, for labeling)",
+    help="[DEPRECATED] Use --v1, --v3, etc. instead",
 )
 
 args = parser.parse_args()
@@ -53,21 +78,25 @@ class CollisionAnalysis:
     filename: str  # Source file
 
 
-def extract_obstacle_collisions_streaming(filename: str, target_percentage: float = 0.9):
+def extract_obstacle_collisions_streaming(
+    filename: str, target_percentage: float = 0.9
+):
     """Extract obstacle collision data with streaming analysis - stops at target percentage"""
     obstacle_collisions = []
     first_collision_particles = set()
     total_particles = None
     target_unique_particles = None
-    
-    print(f"  Starting streaming analysis (target: {target_percentage*100:.0f}% particles)")
-    
+
+    print(
+        f"  Starting streaming analysis (target: {target_percentage*100:.0f}% particles)"
+    )
+
     with open(filename, "r") as f:
         current_block = ""
-        
+
         for line_num, line in enumerate(f):
             line = line.strip()
-            
+
             # Check for block separator or end of file
             if line == "---" or not line:
                 if current_block.strip():
@@ -76,15 +105,23 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
                     if len(block_lines) >= 2:
                         try:
                             time = float(block_lines[0])
-                            
+
                             # Count total particles in first frame
                             if total_particles is None:
-                                total_particles = len(block_lines) - 1  # Exclude time line
+                                total_particles = (
+                                    len(block_lines) - 1
+                                )  # Exclude time line
                                 # Count only particles that can collide (exclude obstacle with ID=0)
-                                colliding_particles = total_particles - 1  # Exclude obstacle
-                                target_unique_particles = int(target_percentage * colliding_particles)
-                                print(f"  Detected {total_particles} total particles ({colliding_particles} can collide), target: {target_unique_particles} unique collisions")
-                            
+                                colliding_particles = (
+                                    total_particles - 1
+                                )  # Exclude obstacle
+                                target_unique_particles = int(
+                                    target_percentage * colliding_particles
+                                )
+                                print(
+                                    f"  Detected {total_particles} total particles ({colliding_particles} can collide), target: {target_unique_particles} unique collisions"
+                                )
+
                             # Process particle data
                             for particle_line in block_lines[1:]:
                                 parts = particle_line.strip().split()
@@ -101,26 +138,35 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
                                     # Check obstacle collision (particle hits obstacle)
                                     obstacle_distance = r - (particle_radius + R)
                                     if obstacle_distance <= 1e-4 and v_radial < 0:
-                                        obstacle_collisions.append([time, int(particle_id)])
+                                        obstacle_collisions.append(
+                                            [time, int(particle_id)]
+                                        )
                                         first_collision_particles.add(int(particle_id))
-                                        
+
                                         # Check if we've reached our target
-                                        if len(first_collision_particles) >= target_unique_particles:
-                                            print(f"  Reached target at time {time:.3f}s after {line_num+1} lines")
-                                            print(f"  Unique particles: {len(first_collision_particles)}, Total collisions: {len(obstacle_collisions)}")
+                                        if (
+                                            len(first_collision_particles)
+                                            >= target_unique_particles
+                                        ):
+                                            print(
+                                                f"  Reached target at time {time:.3f}s after {line_num+1} lines"
+                                            )
+                                            print(
+                                                f"  Unique particles: {len(first_collision_particles)}, Total collisions: {len(obstacle_collisions)}"
+                                            )
                                             return (
                                                 np.array(obstacle_collisions),
                                                 len(first_collision_particles),
-                                                total_particles
+                                                total_particles,
                                             )
-                                            
+
                         except (ValueError, IndexError):
                             continue  # Skip malformed blocks
-                    
+
                 current_block = ""
             else:
                 current_block += line + "\n"
-    
+
     # Process final block if exists
     if current_block.strip():
         # Same processing logic as above
@@ -142,13 +188,19 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
                             first_collision_particles.add(int(particle_id))
             except (ValueError, IndexError):
                 pass
-    
-    print(f"  Finished file: {len(first_collision_particles)} unique particles, {len(obstacle_collisions)} total collisions")
-    
+
+    print(
+        f"  Finished file: {len(first_collision_particles)} unique particles, {len(obstacle_collisions)} total collisions"
+    )
+
     return (
-        np.array(obstacle_collisions) if obstacle_collisions else np.array([]).reshape(0, 2),
+        (
+            np.array(obstacle_collisions)
+            if obstacle_collisions
+            else np.array([]).reshape(0, 2)
+        ),
         len(first_collision_particles),
-        total_particles or 0
+        total_particles or 0,
     )
 
 
@@ -161,7 +213,7 @@ def analyze_obstacle_collisions_from_streaming(
 
     tiempos = obstacle_collisions[:, 0]
     ids = obstacle_collisions[:, 1].astype(int)
-    
+
     # ── 1.3.a: First-time collisions analysis ──
     primer_choque_por_particula = {}
     for t, pid in zip(tiempos, ids):
@@ -178,12 +230,16 @@ def analyze_obstacle_collisions_from_streaming(
     # This represents when exactly 90% of all possible particles have collided for the first time
     first_time_t90 = primeros_choques[-1]  # The time when the target was reached
     analysis_time = first_time_t90
-    
-    print(f"  t₉₀% calculated as: {first_time_t90:.6f} s (time when target particles reached)")
-    print(f"  Unique particles found: {len(primeros_choques)} (should be ~90% of colliding particles)")
+
+    print(
+        f"  t₉₀% calculated as: {first_time_t90:.6f} s (time when target particles reached)"
+    )
+    print(
+        f"  Unique particles found: {len(primeros_choques)} (should be ~90% of colliding particles)"
+    )
     print(f"  First 5 collision times: {primeros_choques[:5]}")
     print(f"  Last 5 collision times: {primeros_choques[-5:]}")
-    
+
     # ── 1.3.b: All collisions analysis (already filtered data) ──
     todos_choques = np.sort(tiempos)
     total_collisions = len(todos_choques)
@@ -199,12 +255,13 @@ def analyze_obstacle_collisions_from_streaming(
     # 1.3.b: Cumulative total collisions
     all_collisions_count = np.array([np.sum(todos_choques <= t) for t in t_eval])
 
-    # 1.3.b: Collision rate (collisions per second) 
+    # 1.3.b: Collision rate (collisions per second)
     # Use period from 50% to 100% of analysis time for steady state rate
     tiempo_inicio_steady = 0.5 * analysis_time
     tiempo_fin_steady = analysis_time
-    choques_steady = np.sum((todos_choques >= tiempo_inicio_steady) & 
-                           (todos_choques <= tiempo_fin_steady))
+    choques_steady = np.sum(
+        (todos_choques >= tiempo_inicio_steady) & (todos_choques <= tiempo_fin_steady)
+    )
     duracion_steady = tiempo_fin_steady - tiempo_inicio_steady
     collision_rate = choques_steady / duracion_steady if duracion_steady > 0 else None
 
@@ -221,18 +278,20 @@ def analyze_obstacle_collisions_from_streaming(
     )
 
 
-def group_analyses_by_velocity(analyses: List[CollisionAnalysis], velocities: List[float]) -> List[CollisionAnalysis]:
+def group_analyses_by_velocity(
+    analyses: List[CollisionAnalysis], velocities: List[float]
+) -> List[CollisionAnalysis]:
     """Group analyses by velocity and compute mean values for repeated velocities"""
     from collections import defaultdict
     import scipy.interpolate
-    
+
     # Group analyses by velocity
     velocity_groups = defaultdict(list)
     for analysis, velocity in zip(analyses, velocities):
         velocity_groups[velocity].append(analysis)
-    
+
     averaged_analyses = []
-    
+
     for velocity, group_analyses in velocity_groups.items():
         if len(group_analyses) == 1:
             # Single file for this velocity, use as-is
@@ -240,49 +299,59 @@ def group_analyses_by_velocity(analyses: List[CollisionAnalysis], velocities: Li
         else:
             # Multiple files for this velocity, compute averages
             print(f"  Averaging {len(group_analyses)} files for v₀ = {velocity} m/s")
-            
+
             # Average scalar metrics
-            t90_values = [a.first_time_t90 for a in group_analyses if a.first_time_t90 is not None]
-            collision_rates = [a.collision_rate for a in group_analyses if a.collision_rate is not None]
+            t90_values = [
+                a.first_time_t90 for a in group_analyses if a.first_time_t90 is not None
+            ]
+            collision_rates = [
+                a.collision_rate for a in group_analyses if a.collision_rate is not None
+            ]
             unique_counts = [a.unique_particles_count for a in group_analyses]
             total_collisions = [a.total_collisions for a in group_analyses]
-            
+
             avg_t90 = np.mean(t90_values) if t90_values else None
             avg_collision_rate = np.mean(collision_rates) if collision_rates else None
             avg_unique_count = int(np.mean(unique_counts))
             avg_total_collisions = int(np.mean(total_collisions))
-            
+
             # Create common time grid for averaging curves
             min_time = min(a.t_eval.min() for a in group_analyses)
             max_time = max(a.t_eval.max() for a in group_analyses)
             t_eval_common = np.linspace(min_time, max_time, 100)
-            
+
             # Interpolate and average curves
             first_time_curves = []
             all_collisions_curves = []
-            
+
             for analysis in group_analyses:
                 # Interpolate to common grid
                 f_first = scipy.interpolate.interp1d(
-                    analysis.t_eval, analysis.first_time_collisions_count,
-                    kind='linear', bounds_error=False, fill_value=(0, analysis.first_time_collisions_count[-1])
+                    analysis.t_eval,
+                    analysis.first_time_collisions_count,
+                    kind="linear",
+                    bounds_error=False,
+                    fill_value=(0, analysis.first_time_collisions_count[-1]),
                 )
                 first_time_curves.append(f_first(t_eval_common))
-                
+
                 f_all = scipy.interpolate.interp1d(
-                    analysis.t_eval, analysis.all_collisions_count,
-                    kind='linear', bounds_error=False, fill_value=(0, analysis.all_collisions_count[-1])
+                    analysis.t_eval,
+                    analysis.all_collisions_count,
+                    kind="linear",
+                    bounds_error=False,
+                    fill_value=(0, analysis.all_collisions_count[-1]),
                 )
                 all_collisions_curves.append(f_all(t_eval_common))
-            
+
             # Compute averages
             avg_first_time_count = np.mean(first_time_curves, axis=0)
             avg_all_collisions_count = np.mean(all_collisions_curves, axis=0)
-            
+
             # Create averaged analysis object
             avg_filename = f"averaged_{len(group_analyses)}_files_v{velocity}"
             avg_total_time = np.mean([a.total_time for a in group_analyses])
-            
+
             averaged_analysis = CollisionAnalysis(
                 t_eval=t_eval_common,
                 first_time_collisions_count=avg_first_time_count,
@@ -292,17 +361,24 @@ def group_analyses_by_velocity(analyses: List[CollisionAnalysis], velocities: Li
                 collision_rate=avg_collision_rate,
                 total_collisions=avg_total_collisions,
                 total_time=avg_total_time,
-                filename=avg_filename
+                filename=avg_filename,
             )
-            
+
             averaged_analyses.append(averaged_analysis)
-    
+
     # Sort by velocity (extract from filename or use original velocity order)
     velocity_order = {v: i for i, v in enumerate(sorted(set(velocities)))}
-    averaged_analyses.sort(key=lambda a: velocity_order.get(
-        next(v for v, analyses in velocity_groups.items() 
-             if any(a.filename == a.filename for a in analyses)), 0))
-    
+    averaged_analyses.sort(
+        key=lambda a: velocity_order.get(
+            next(
+                v
+                for v, analyses in velocity_groups.items()
+                if any(a.filename == a.filename for a in analyses)
+            ),
+            0,
+        )
+    )
+
     return averaged_analyses
 
 
@@ -320,10 +396,14 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
         print(f"Processing {filename}...")
 
         # Extract collision data with streaming (stops at 90%)
-        obstacle_collisions, unique_count, total_particles = extract_obstacle_collisions_streaming(filename)
+        obstacle_collisions, unique_count, total_particles = (
+            extract_obstacle_collisions_streaming(filename)
+        )
 
         # Analyze collisions
-        analysis = analyze_obstacle_collisions_from_streaming(obstacle_collisions, unique_count, filename)
+        analysis = analyze_obstacle_collisions_from_streaming(
+            obstacle_collisions, unique_count, filename
+        )
 
         if analysis is None:
             print(f"No obstacle collisions found in {filename}")
@@ -342,8 +422,10 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
     # Group analyses by velocity (average if multiple files per velocity)
     if velocities:
         print("\nGrouping analyses by velocity...")
-        analyses = group_analyses_by_velocity(raw_analyses, velocities[:len(raw_analyses)])
-        
+        analyses = group_analyses_by_velocity(
+            raw_analyses, velocities[: len(raw_analyses)]
+        )
+
         # Prepare temperature data from grouped analyses
         unique_velocities = []
         for analysis in analyses:
@@ -355,12 +437,14 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
             else:
                 # Find original velocity for this analysis
                 for i, raw_analysis in enumerate(raw_analyses):
-                    if raw_analysis.filename == analysis.filename and i < len(velocities):
+                    if raw_analysis.filename == analysis.filename and i < len(
+                        velocities
+                    ):
                         velocity = velocities[i]
                         break
                 else:
                     continue
-            
+
             unique_velocities.append(velocity)
             temperature = (velocity**2) / (1.0**2)
             t90_data.append((temperature, analysis.first_time_t90))
@@ -378,7 +462,7 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
             # Check if this is an averaged result
             if "averaged" in analysis.filename:
                 n_files = int(analysis.filename.split("_")[1])
-                label = f"v₀ = {velocity} m/s (avg of {n_files})"
+                label = f"v₀ = {velocity} m/s"
             else:
                 label = f"v₀ = {velocity} m/s"
         else:
@@ -393,7 +477,6 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
 
     plt.xlabel("Tiempo [s]")
     plt.ylabel("Nro. de choques únicos")
-    plt.title("1.3.a: Partículas que colisionan por primera vez (hasta t₉₀%)")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -410,7 +493,7 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
             # Check if this is an averaged result
             if "averaged" in analysis.filename:
                 n_files = int(analysis.filename.split("_")[1])
-                label = f"v₀ = {velocity} m/s (avg of {n_files})"
+                label = f"v₀ = {velocity} m/s"
             else:
                 label = f"v₀ = {velocity} m/s"
         else:
@@ -422,7 +505,6 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
 
     plt.xlabel("Tiempo [s]")
     plt.ylabel("Nro. de choques totales")
-    plt.title("1.3.b: Todas las colisiones (hasta t₉₀%)")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -455,7 +537,6 @@ def plot_temperature_analyses(t90_data: List[tuple], collision_rate_data: List[t
         plt.plot(temperatures_a, t90_values, "o-", color=viridis(0.3), markersize=8)
         plt.xlabel("Temperatura relativa [T/T₀]")
         plt.ylabel("t₉₀% [s]")
-        plt.title("1.3.a: Tiempo para que 90% de partículas colisionen")
         plt.grid(True)
         plt.tight_layout()
         plt.savefig("analysis/1.3a_t90_vs_temperatura.png", dpi=300)
@@ -475,7 +556,6 @@ def plot_temperature_analyses(t90_data: List[tuple], collision_rate_data: List[t
         )
         plt.xlabel("Temperatura relativa [T/T₀]")
         plt.ylabel("Tasa de colisiones [s⁻¹]")
-        plt.title("1.3.b: Tasa de colisiones en estado estacionario")
         plt.grid(True)
         plt.tight_layout()
         plt.savefig("analysis/1.3b_collision_rate_vs_temperatura.png", dpi=300)
@@ -486,5 +566,53 @@ def plot_temperature_analyses(t90_data: List[tuple], collision_rate_data: List[t
             print(f"  T/T₀ = {temp:.1f}: Collision rate = {rate:.1f} s⁻¹")
 
 
+def parse_velocity_arguments(args):
+    """Parse velocity-specific arguments and build files/velocities lists"""
+    files = []
+    velocities = []
+
+    # Check if using new velocity-specific format
+    velocity_args = {
+        1.0: args.v1,
+        2.0: args.v2,
+        3.0: args.v3,
+        4.0: args.v4,
+        5.0: args.v5,
+        6.0: args.v6,
+        8.0: args.v8,
+        10.0: args.v10,
+    }
+
+    using_new_format = any(v_files is not None for v_files in velocity_args.values())
+
+    if using_new_format:
+        print("Using velocity-specific arguments")
+        # Sort by velocity to ensure consistent plotting order
+        for velocity in sorted(velocity_args.keys()):
+            v_files = velocity_args[velocity]
+            if v_files:
+                files.extend(v_files)
+                velocities.extend([velocity] * len(v_files))
+                print(f"  v₀ = {velocity} m/s: {len(v_files)} file(s)")
+    else:
+        # Fall back to old format
+        if args.output_file and args.velocities:
+            print(
+                "Using deprecated -f/-v format (consider switching to --v1, --v3, etc.)"
+            )
+            files = args.output_file
+            velocities = args.velocities
+        else:
+            parser.error(
+                "Must provide either velocity-specific arguments (--v1, --v3, etc.) or deprecated -f/-v format"
+            )
+
+    if len(files) != len(velocities):
+        parser.error(f"Mismatch: {len(files)} files but {len(velocities)} velocities")
+
+    return files, velocities
+
+
 if __name__ == "__main__":
-    plot_collision_analysis(args.output_file, args.velocities)
+    files, velocities = parse_velocity_arguments(args)
+    plot_collision_analysis(files, velocities)
