@@ -10,7 +10,7 @@ import re
 import pandas as pd
 
 # --- Configuration ---
-SKIP_TIME = 2.0  # Time to wait for system to stabilize before calculating temperature
+SKIP_TIME = 0.9  # Time to wait for system to stabilize before calculating temperature
 
 # --- Data Loading and Parsing ---
 
@@ -55,28 +55,36 @@ def group_by_time_bin(times, values, dt_bin):
         binned[t_bin].append(v)
     return binned
 
-def calculate_mean_temperature(filename: str, skip_time: float) -> float:
-    """Calculates the average temperature of small particles after a skip_time."""
+def calculate_mean_temperature(filename: str, desde_t: float) -> float:
     with open(filename, "r") as f:
         content = f.read()
+
     blocks = content.split("---")
-    v2_total, particle_count = 0.0, 0
+    v2_total = 0.0
+    count = 0
+
     for block in blocks:
         lines = block.strip().split("\n")
-        if len(lines) < 2: continue
-        try:
-            time = float(lines[0])
-            if time < skip_time: continue
-            for line in lines[1:]:
-                parts = line.strip().split()
-                if len(parts) < 5: continue
-                if int(float(parts[0])) != 0:
-                    vx, vy = float(parts[3]), float(parts[4])
-                    v2_total += vx**2 + vy**2
-                    particle_count += 1
-        except (ValueError, IndexError):
+        if len(lines) < 2:
             continue
-    return v2_total / particle_count if particle_count > 0 else 0
+
+        time = float(lines[0])
+        if time < desde_t:
+            continue
+
+    
+        for line in lines[1:]:
+            parts = line.strip().split()
+            if len(parts) < 5:
+                continue
+            
+            # This is the line to add
+            if int(float(parts[0])) != 0:
+                vx = float(parts[3])
+                vy = float(parts[4])
+                v2_total += vx**2 + vy**2
+                count += 1
+    return v2_total / count
 
 # --- Analysis Mode 1: DCM vs. Time ---
 
@@ -112,9 +120,9 @@ def run_dcm_vs_time_analysis(args, files_by_velocity):
         mean_dcm = np.array([np.mean(dcms_by_time[t]) for t in sorted_times])
         ax.plot(sorted_times, mean_dcm, color=colors[i], linewidth=2, label=f"v₀ = {velocity:.1f} m/s")
 
-    ax.set_title("Comparación de DCM para Diferentes Velocidades Iniciales", fontsize=16, fontweight='bold')
-    ax.set_xlabel("Tiempo (s)", fontsize=14, fontweight='bold')
-    ax.set_ylabel("DCM (m²)", fontsize=14, fontweight='bold')
+    ax.set_title("Comparación de DCM para Diferentes Velocidades Iniciales", fontsize=16)
+    ax.set_xlabel("Tiempo (s)", fontsize=14)
+    ax.set_ylabel("DCM (m²)", fontsize=14)
     ax.legend(title="Velocidad Inicial", fontsize=12, fancybox=True, shadow=True)
     ax.grid(True, linestyle='--', alpha=0.5)
     fig.tight_layout()
@@ -144,6 +152,9 @@ def run_dcm_vs_temp_analysis(args, files_by_velocity):
                 'std': np.std(group_final_dcms),
                 'v0': velocity
             })
+            print(f"Temperatura media: {np.mean(group_temps):.2f} K")
+            print(f"DCM final promedio: {np.mean(group_final_dcms):.2f} m²")
+            print(f"Desviación estándar: {np.std(group_final_dcms):.2f} m²")
 
     if not plot_data:
         print("\nError: No se pudieron procesar datos para generar el gráfico.")
@@ -156,9 +167,9 @@ def run_dcm_vs_temp_analysis(args, files_by_velocity):
     for _, row in df.iterrows():
         ax.annotate(f"v₀={row['v0']:.1f}", (row['temp'], row['dcm']),
                     textcoords="offset points", xytext=(0,10), ha='center')
-    ax.set_title("DCM Final de la Partícula Grande vs. Temperatura del Sistema", fontsize=14, fontweight='bold')
-    ax.set_xlabel("Temperatura Media (proporcional a <v²>)", fontsize=12, fontweight='bold')
-    ax.set_ylabel("DCM Final (m²)", fontsize=12, fontweight='bold')
+    ax.set_title("DCM Final del Obstáculo vs. Temperatura del Sistema", fontsize=14)
+    ax.set_xlabel("Temperatura Media (proporcional a <v²>)", fontsize=12)
+    ax.set_ylabel("DCM Final (m²)", fontsize=12)
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend()
     fig.tight_layout()
@@ -184,16 +195,17 @@ def main():
     args = parser.parse_args()
 
     files_by_velocity = defaultdict(list)
+    # Only process files for a MOBILE obstacle
     for file in sorted(glob.glob("output/*")):
         velocity = get_velocity_from_filename(file)
         if velocity is not None:
             files_by_velocity[velocity].append(file)
 
     if not files_by_velocity:
-        print("Error: No se encontraron archivos con el formato de velocidad esperado (ej: 'v0-1_0').")
+        print("Error: No se encontraron archivos de obstáculo móvil (que contengan 'no-fixed-obstacle').")
         return
         
-    print("Archivos agrupados por velocidad:")
+    print("Archivos de obstáculo móvil agrupados por velocidad:")
     for v, files in files_by_velocity.items():
         print(f"  v0 = {v:.1f} m/s: {len(files)} archivos")
 
