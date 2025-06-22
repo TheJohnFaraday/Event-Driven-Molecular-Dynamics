@@ -11,8 +11,25 @@ R = 0.005  # Obstacle radius
 particle_radius = 5e-4
 DT_FIXED = 0.1  # Time bin for pressure calculation
 
+# MAXIMUM TIME SETTING - Set this to limit analysis time range
+# Set to a number (e.g., 5.0) to limit to that time, or None for no limit
+MAXIMUM_TIME = 10.0
+
+
 parser = argparse.ArgumentParser(
-    description="Parse Kotlin output file and generate animations and plots."
+    description="Parse Kotlin output files and generate pressure plots with averaging support.",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Examples:
+  # Single file
+  python 1.1.py -f single_file.csv
+  
+  # Multiple files (will be averaged)
+  python 1.1.py -f file1.csv file2.csv file3.csv
+  
+  # Multiple files with fixed obstacle option
+  python 1.1.py -f file1.csv file2.csv file3.csv -o
+""",
 )
 parser.add_argument(
     "-o",
@@ -21,7 +38,12 @@ parser.add_argument(
     help="If present, it will assume that the obstacle is fixed at the center, otherwise it will use the last particle index as the obstacle to run calculations",
 )
 parser.add_argument(
-    "-f", "--output_file", type=str, required=True, help="Output file to animate"
+    "-f",
+    "--output_file",
+    nargs="+",  # Allow multiple files
+    type=str,
+    required=True,
+    help="Output file(s) to analyze. Multiple files will be averaged.",
 )
 
 args = parser.parse_args()
@@ -126,10 +148,57 @@ def read_states_and_calculate_pressure(filename: str):
     p_wall = impulse_sums.get("WALL", 0) / (DT_FIXED * perimeter_container)
     p_obstacle = impulse_sums.get("OBSTACLE", 0) / (DT_FIXED * perimeter_obstacle)
 
+    # Apply maximum time filter if specified
+    if MAXIMUM_TIME is not None:
+        print(f"  Applying maximum time filter: {MAXIMUM_TIME} s")
+        mask = times <= MAXIMUM_TIME
+        times = times[mask]
+        p_wall = p_wall[mask]
+        p_obstacle = p_obstacle[mask]
+        print(f"  Filtered data points: {len(times)} (up to {max(times):.1f} s)")
+
     return times.tolist(), p_wall.tolist(), p_obstacle.tolist()
 
 
-def plot_pressures(times, p_wall, p_obstacle):
+def analyze_equilibrium(times, pressures, label=""):
+    """Analyze if the system has reached equilibrium"""
+    if len(times) < 10:
+        return None, None
+
+    # Take last 50% of data for equilibrium analysis
+    mid_point = len(times) // 2
+    eq_times = np.array(times[mid_point:])
+    eq_pressures = np.array(pressures[mid_point:])
+
+    if len(eq_pressures) == 0:
+        return None, None
+
+    # Calculate statistics
+    mean_pressure = np.mean(eq_pressures)
+    std_pressure = np.std(eq_pressures)
+    cv = std_pressure / mean_pressure if mean_pressure > 0 else float("inf")
+
+    # Check trend using linear regression
+    if len(eq_times) > 1:
+        slope, _ = np.polyfit(eq_times, eq_pressures, 1)
+        relative_slope = (
+            abs(slope) / mean_pressure if mean_pressure > 0 else float("inf")
+        )
+    else:
+        relative_slope = float("inf")
+
+    print(f"Equilibrium analysis - {label}:")
+    print(f"  Mean pressure: {mean_pressure:.6f} Pa")
+    print(f"  Std deviation: {std_pressure:.6f} Pa")
+    print(f"  Coefficient of variation: {cv:.4f}")
+    print(f"  Relative slope: {relative_slope:.6f} (should be < 0.01 for equilibrium)")
+    print(f"  Equilibrium reached: {cv < 0.1 and relative_slope < 0.01}")
+    print()
+
+    return mean_pressure, std_pressure
+
+
+def plot_pressures(times, p_wall, p_obstacle, num_files=1):
     plt.figure(figsize=(10, 6))
     viridis = cm.get_cmap("viridis")
 
@@ -142,6 +211,7 @@ def plot_pressures(times, p_wall, p_obstacle):
 
     plt.xlabel("Tiempo [s]")
     plt.ylabel("Presión [Pa]")
+
     plt.legend()
     plt.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.6)
     plt.tight_layout()
@@ -149,6 +219,92 @@ def plot_pressures(times, p_wall, p_obstacle):
     # plt.show()
 
 
+def process_multiple_files(file_list):
+    """Process multiple files and average their pressure results"""
+    print(f"Processing {len(file_list)} file(s)...")
+
+    all_results = []
+    for i, filename in enumerate(file_list):
+        print(f"  Processing file {i+1}/{len(file_list)}: {filename}")
+        times, p_wall, p_obstacle = read_states_and_calculate_pressure(filename)
+
+        if times:  # Only add if we got valid results
+            all_results.append((times, p_wall, p_obstacle))
+        else:
+            print(f"    Warning: No valid data found in {filename}")
+
+    if not all_results:
+        print("Error: No valid data found in any file!")
+        return [], [], []
+
+    if len(all_results) == 1:
+        print("Single file processed.")
+        return all_results[0]
+
+    # Multiple files - need to average
+    print(f"\nAveraging results from {len(all_results)} files...")
+
+    # Find common time grid - use the shortest time range
+    min_max_time = min(max(times) for times, _, _ in all_results)
+    max_min_time = max(min(times) for times, _, _ in all_results)
+
+    # Apply maximum time constraint if specified
+    if MAXIMUM_TIME is not None:
+        min_max_time = min(min_max_time, MAXIMUM_TIME)
+        print(f"  Applying maximum time constraint: {MAXIMUM_TIME} s")
+
+    if max_min_time >= min_max_time:
+        print("Warning: Files have non-overlapping time ranges. Using intersection.")
+
+    # Create common time grid
+    common_times = np.arange(0, min_max_time + DT_FIXED, DT_FIXED)
+
+    # Interpolate each file's results to common grid
+    wall_pressures = []
+    obstacle_pressures = []
+
+    for times, p_wall, p_obstacle in all_results:
+        # Convert to numpy arrays for interpolation
+        times_np = np.array(times)
+        p_wall_np = np.array(p_wall)
+        p_obstacle_np = np.array(p_obstacle)
+
+        # Interpolate to common grid
+        p_wall_interp = np.interp(common_times, times_np, p_wall_np)
+        p_obstacle_interp = np.interp(common_times, times_np, p_obstacle_np)
+
+        wall_pressures.append(p_wall_interp)
+        obstacle_pressures.append(p_obstacle_interp)
+
+    # Calculate averages
+    wall_pressures = np.array(wall_pressures)
+    obstacle_pressures = np.array(obstacle_pressures)
+
+    avg_p_wall = np.mean(wall_pressures, axis=0)
+    avg_p_obstacle = np.mean(obstacle_pressures, axis=0)
+
+    print(f"✓ Averaged {len(all_results)} files successfully")
+    print(f"  Time range: 0 - {max(common_times):.1f} s")
+    print(f"  Data points: {len(common_times)}")
+
+    return common_times.tolist(), avg_p_wall.tolist(), avg_p_obstacle.tolist()
+
+
 if __name__ == "__main__":
-    times, p_wall, p_obstacle = read_states_and_calculate_pressure(args.output_file)
-    plot_pressures(times, p_wall, p_obstacle)
+    # Show maximum time setting
+    if MAXIMUM_TIME is not None:
+        print(f"🕒 Maximum time limit set to: {MAXIMUM_TIME} s")
+    else:
+        print("🕒 No maximum time limit (analyzing full simulation)")
+
+    # Process file(s) - single or multiple with averaging
+    times, p_wall, p_obstacle = process_multiple_files(args.output_file)
+
+    if times:  # Only plot if we have valid data
+        # Analyze equilibrium
+        analyze_equilibrium(times, p_wall, "Wall pressure")
+        analyze_equilibrium(times, p_obstacle, "Obstacle pressure")
+
+        plot_pressures(times, p_wall, p_obstacle, len(args.output_file))
+    else:
+        print("No data to plot!")
