@@ -150,10 +150,9 @@ def main():
         plt.annotate(f"v0={v}", (T, P), fontsize=9)
     plt.xlabel("Temperatura relativa (T / T₀)")
     plt.ylabel("Presión promedio [Pa]")
-    plt.title("Presión promedio vs Temperatura relativa")
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("1.2_presion_vs_temperatura.png", dpi=300)
+    plt.savefig("analysis/1.2_presion_vs_temperatura.png", dpi=300)
     # plt.show()
 
 
