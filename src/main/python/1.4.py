@@ -19,22 +19,22 @@ def find_obstacle_wall_time(files, particle_id=0):
     Returns the minimum time across all files where the obstacle reaches the wall boundary.
     """
     wall_times = []
-    
+
     for file in files:
         times, positions = load_positions(file, particle_id)
-        
+
         if len(times) == 0 or len(positions) == 0:
             continue
-            
+
         # Calculate radial distance from center for each position
         radial_distances = np.sqrt(positions[:, 0]**2 + positions[:, 1]**2)
-        
+
         # Find when obstacle reaches wall boundary (container_radius - obstacle_radius)
         wall_boundary = CONTAINER_RADIUS - OBSTACLE_RADIUS  # 0.045 m
-        
+
         # Find first time when obstacle reaches or exceeds wall boundary
         wall_reached = radial_distances >= wall_boundary
-        
+
         if np.any(wall_reached):
             # Find the first occurrence
             first_wall_time_idx = np.where(wall_reached)[0][0]
@@ -43,11 +43,11 @@ def find_obstacle_wall_time(files, particle_id=0):
             print(f"  {file}: Obstacle reaches wall at t = {wall_time:.4f} s")
         else:
             print(f"  {file}: Obstacle never reaches wall (max distance: {np.max(radial_distances):.4f} m)")
-    
+
     if not wall_times:
         print("Warning: Obstacle never reaches wall in any file. Using full simulation time.")
         return None
-    
+
     # Return the minimum time across all files
     min_wall_time = min(wall_times)
     print(f"Earliest wall collision time across all files: {min_wall_time:.4f} s")
@@ -251,7 +251,7 @@ def main():
     else:
         title_text_dcm += f"\nRango: 0.0 - {t_max:.2f} s (calculado automáticamente)"
 
-    ax_dcm.set_title(title_text_dcm, fontsize=16, fontweight='bold', pad=20)
+    #ax_dcm.set_title(title_text_dcm, fontsize=16, fontweight='bold', pad=20)
     ax_dcm.set_xlabel("Tiempo (s)", fontsize=14)
     ax_dcm.set_ylabel("DCM (m²)", fontsize=14)
 
@@ -259,16 +259,16 @@ def main():
     ax_dcm.grid(True, linestyle="--", alpha=0.3, color='gray')
     ax_dcm.set_ylim(bottom=0)
 
-    stats_text_dcm = f"R² = {r_squared:.4f}\nN = {len(all_files)} archivos\nPuntos = {len(sorted_times)}\nD = {D:.2e} m²/s"
-    ax_dcm.text(0.02, 0.98, stats_text_dcm, transform=ax_dcm.transAxes,
-            verticalalignment='top', fontsize=11,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    #stats_text_dcm = f"R² = {r_squared:.4f}\nN = {len(all_files)} archivos\nPuntos = {len(sorted_times)}\nD = {D:.2e} m²/s"
+    #ax_dcm.text(0.02, 0.98, stats_text_dcm, transform=ax_dcm.transAxes,
+    #        verticalalignment='top', fontsize=11,
+    #        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     ax_dcm.tick_params(axis='both', which='major', labelsize=12)
     ax_dcm.yaxis.set_major_formatter(FuncFormatter(format_func))
     fig_dcm.tight_layout()
 
-    dcm_plot_filename = f"plots/v0=1.0_dcm.png"
+    dcm_plot_filename = f"analysis/v0=1.0_dcm.png"
     fig_dcm.savefig(dcm_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Gráfico de DCM guardado en: {dcm_plot_filename}")
 
@@ -276,10 +276,10 @@ def main():
     fig_error, ax_error = plt.subplots(figsize=(12, 8))
 
     ax_error.plot(d_range, fit_errors, color="#007ACC", linewidth=2.5, label="Error del ajuste E(D)")
-    ax_error.set_title("Error del Ajuste en Función del Coeficiente de Difusión", fontsize=14, fontweight='bold')
+    #ax_error.set_title("Error del Ajuste en Función del Coeficiente de Difusión", fontsize=14, fontweight='bold')
     ax_error.set_xlabel("Coeficiente de Difusión D (m²/s)", fontsize=14)
     ax_error.set_ylabel("Error Cuadrático Total E(D)", fontsize=14)
-
+    
     min_error_d = optimal_D
     min_error = np.min(fit_errors)
     ax_error.axvline(x=min_error_d, color="#D62728", linestyle='--', linewidth=2, label=f"D óptimo = {min_error_d:.2e} m²/s")
@@ -291,7 +291,7 @@ def main():
     ax_error.yaxis.set_major_formatter(FuncFormatter(format_func))
     fig_error.tight_layout()
 
-    error_plot_filename = f"plots/v0=1.0_dcm_error.png"
+    error_plot_filename = f"analysis/v0=1.0_dcm_error.png"
     fig_error.savefig(error_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Gráfico de Error guardado en: {error_plot_filename}")
 
