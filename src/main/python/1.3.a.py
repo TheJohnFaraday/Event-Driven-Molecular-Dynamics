@@ -80,8 +80,10 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
                             # Count total particles in first frame
                             if total_particles is None:
                                 total_particles = len(block_lines) - 1  # Exclude time line
-                                target_unique_particles = int(target_percentage * total_particles)
-                                print(f"  Detected {total_particles} particles, target: {target_unique_particles} unique collisions")
+                                # Count only particles that can collide (exclude obstacle with ID=0)
+                                colliding_particles = total_particles - 1  # Exclude obstacle
+                                target_unique_particles = int(target_percentage * colliding_particles)
+                                print(f"  Detected {total_particles} total particles ({colliding_particles} can collide), target: {target_unique_particles} unique collisions")
                             
                             # Process particle data
                             for particle_line in block_lines[1:]:
@@ -98,7 +100,7 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
 
                                     # Check obstacle collision (particle hits obstacle)
                                     obstacle_distance = r - (particle_radius + R)
-                                    if obstacle_distance <= 1e-5 and v_radial < 0:
+                                    if obstacle_distance <= 1e-4 and v_radial < 0:
                                         obstacle_collisions.append([time, int(particle_id)])
                                         first_collision_particles.add(int(particle_id))
                                         
@@ -135,7 +137,7 @@ def extract_obstacle_collisions_streaming(filename: str, target_percentage: floa
                         r = np.sqrt(x**2 + y**2)
                         v_radial = (x * vx + y * vy) / r if r > 0 else 0
                         obstacle_distance = r - (particle_radius + R)
-                        if obstacle_distance <= 1e-5 and v_radial < 0:
+                        if obstacle_distance <= 1e-4 and v_radial < 0:
                             obstacle_collisions.append([time, int(particle_id)])
                             first_collision_particles.add(int(particle_id))
             except (ValueError, IndexError):
@@ -171,9 +173,15 @@ def analyze_obstacle_collisions_from_streaming(
 
     primeros_choques = np.array(sorted(primer_choque_por_particula.values()))
 
-    # Calculate t90% for first collisions (should be the last collision time since we stopped at 90%)
-    analysis_time = tiempos.max()
-    first_time_t90 = analysis_time
+    # Calculate t90% - since streaming stopped at 90%, the last first-collision time IS the t90%
+    # This is the time when the 90th percentile particle collided for the first time
+    first_time_t90 = primeros_choques[-1]  # Last (and 90th percentile) first collision
+    analysis_time = first_time_t90
+    
+    print(f"  t₉₀% calculated as: {first_time_t90:.6f} s (last first-collision time)")
+    print(f"  Unique particles found: {len(primeros_choques)} (should be ~90% of colliding particles)")
+    print(f"  First 5 collision times: {primeros_choques[:5]}")
+    print(f"  Last 5 collision times: {primeros_choques[-5:]}")
     
     # ── 1.3.b: All collisions analysis (already filtered data) ──
     todos_choques = np.sort(tiempos)
@@ -212,6 +220,91 @@ def analyze_obstacle_collisions_from_streaming(
     )
 
 
+def group_analyses_by_velocity(analyses: List[CollisionAnalysis], velocities: List[float]) -> List[CollisionAnalysis]:
+    """Group analyses by velocity and compute mean values for repeated velocities"""
+    from collections import defaultdict
+    import scipy.interpolate
+    
+    # Group analyses by velocity
+    velocity_groups = defaultdict(list)
+    for analysis, velocity in zip(analyses, velocities):
+        velocity_groups[velocity].append(analysis)
+    
+    averaged_analyses = []
+    
+    for velocity, group_analyses in velocity_groups.items():
+        if len(group_analyses) == 1:
+            # Single file for this velocity, use as-is
+            averaged_analyses.append(group_analyses[0])
+        else:
+            # Multiple files for this velocity, compute averages
+            print(f"  Averaging {len(group_analyses)} files for v₀ = {velocity} m/s")
+            
+            # Average scalar metrics
+            t90_values = [a.first_time_t90 for a in group_analyses if a.first_time_t90 is not None]
+            collision_rates = [a.collision_rate for a in group_analyses if a.collision_rate is not None]
+            unique_counts = [a.unique_particles_count for a in group_analyses]
+            total_collisions = [a.total_collisions for a in group_analyses]
+            
+            avg_t90 = np.mean(t90_values) if t90_values else None
+            avg_collision_rate = np.mean(collision_rates) if collision_rates else None
+            avg_unique_count = int(np.mean(unique_counts))
+            avg_total_collisions = int(np.mean(total_collisions))
+            
+            # Create common time grid for averaging curves
+            min_time = min(a.t_eval.min() for a in group_analyses)
+            max_time = max(a.t_eval.max() for a in group_analyses)
+            t_eval_common = np.linspace(min_time, max_time, 100)
+            
+            # Interpolate and average curves
+            first_time_curves = []
+            all_collisions_curves = []
+            
+            for analysis in group_analyses:
+                # Interpolate to common grid
+                f_first = scipy.interpolate.interp1d(
+                    analysis.t_eval, analysis.first_time_collisions_count,
+                    kind='linear', bounds_error=False, fill_value=(0, analysis.first_time_collisions_count[-1])
+                )
+                first_time_curves.append(f_first(t_eval_common))
+                
+                f_all = scipy.interpolate.interp1d(
+                    analysis.t_eval, analysis.all_collisions_count,
+                    kind='linear', bounds_error=False, fill_value=(0, analysis.all_collisions_count[-1])
+                )
+                all_collisions_curves.append(f_all(t_eval_common))
+            
+            # Compute averages
+            avg_first_time_count = np.mean(first_time_curves, axis=0)
+            avg_all_collisions_count = np.mean(all_collisions_curves, axis=0)
+            
+            # Create averaged analysis object
+            avg_filename = f"averaged_{len(group_analyses)}_files_v{velocity}"
+            avg_total_time = np.mean([a.total_time for a in group_analyses])
+            
+            averaged_analysis = CollisionAnalysis(
+                t_eval=t_eval_common,
+                first_time_collisions_count=avg_first_time_count,
+                first_time_t90=avg_t90,
+                unique_particles_count=avg_unique_count,
+                all_collisions_count=avg_all_collisions_count,
+                collision_rate=avg_collision_rate,
+                total_collisions=avg_total_collisions,
+                total_time=avg_total_time,
+                filename=avg_filename
+            )
+            
+            averaged_analyses.append(averaged_analysis)
+    
+    # Sort by velocity (extract from filename or use original velocity order)
+    velocity_order = {v: i for i, v in enumerate(sorted(set(velocities)))}
+    averaged_analyses.sort(key=lambda a: velocity_order.get(
+        next(v for v, analyses in velocity_groups.items() 
+             if any(a.filename == a.filename for a in analyses)), 0))
+    
+    return averaged_analyses
+
+
 def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] = None):
     """Plot both 1.3.a and 1.3.b analyses for all files"""
     viridis = cm.get_cmap("viridis")
@@ -221,7 +314,7 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
     collision_rate_data = []  # For 1.3.b
 
     # Process all files
-    analyses = []
+    raw_analyses = []
     for i, filename in enumerate(files):
         print(f"Processing {filename}...")
 
@@ -235,18 +328,9 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
             print(f"No obstacle collisions found in {filename}")
             continue
 
-        analyses.append(analysis)
+        raw_analyses.append(analysis)
 
-        # Determine velocity/temperature
-        if velocities and i < len(velocities):
-            v0 = velocities[i]
-            temperature = (v0**2) / (
-                1.0**2
-            )  # Dimensionless temperature relative to v0=1 m/s
-            t90_data.append((temperature, analysis.first_time_t90))
-            collision_rate_data.append((temperature, analysis.collision_rate))
-
-        # Print stats
+        # Print stats for individual file
         print(f"  Analysis time window: 0 - {analysis.total_time:.3f} s (up to t₉₀%)")
         print(f"  Total unique particles: {analysis.unique_particles_count}")
         print(f"  Total collisions (in window): {analysis.total_collisions}")
@@ -254,15 +338,50 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
         if analysis.collision_rate:
             print(f"  Collision rate: {analysis.collision_rate:.1f} collisions/s")
 
+    # Group analyses by velocity (average if multiple files per velocity)
+    if velocities:
+        print("\nGrouping analyses by velocity...")
+        analyses = group_analyses_by_velocity(raw_analyses, velocities[:len(raw_analyses)])
+        
+        # Prepare temperature data from grouped analyses
+        unique_velocities = []
+        for analysis in analyses:
+            # Extract velocity from analysis (either original or from averaged filename)
+            if "averaged" in analysis.filename:
+                # Extract velocity from averaged filename
+                v_str = analysis.filename.split("_v")[1]
+                velocity = float(v_str)
+            else:
+                # Find original velocity for this analysis
+                for i, raw_analysis in enumerate(raw_analyses):
+                    if raw_analysis.filename == analysis.filename and i < len(velocities):
+                        velocity = velocities[i]
+                        break
+                else:
+                    continue
+            
+            unique_velocities.append(velocity)
+            temperature = (velocity**2) / (1.0**2)
+            t90_data.append((temperature, analysis.first_time_t90))
+            collision_rate_data.append((temperature, analysis.collision_rate))
+    else:
+        analyses = raw_analyses
+
     # ── Plot 1.3.a: First-time collisions ──
     plt.figure(figsize=(10, 6))
     for i, analysis in enumerate(analyses):
         color = viridis(i / max(len(analyses) - 1, 1))
 
-        if velocities and i < len(velocities):
-            label = f"v₀ = {velocities[i]} m/s"
+        if velocities and i < len(unique_velocities):
+            velocity = unique_velocities[i]
+            # Check if this is an averaged result
+            if "averaged" in analysis.filename:
+                n_files = int(analysis.filename.split("_")[1])
+                label = f"v₀ = {velocity} m/s (avg of {n_files})"
+            else:
+                label = f"v₀ = {velocity} m/s"
         else:
-            label = f"File {i+1}"
+            label = f"Analysis {i+1}"
 
         plt.plot(
             analysis.t_eval,
@@ -285,10 +404,16 @@ def plot_collision_analysis(files: List[str], velocities: Optional[List[float]] 
     for i, analysis in enumerate(analyses):
         color = viridis(i / max(len(analyses) - 1, 1))
 
-        if velocities and i < len(velocities):
-            label = f"v₀ = {velocities[i]} m/s"
+        if velocities and i < len(unique_velocities):
+            velocity = unique_velocities[i]
+            # Check if this is an averaged result
+            if "averaged" in analysis.filename:
+                n_files = int(analysis.filename.split("_")[1])
+                label = f"v₀ = {velocity} m/s (avg of {n_files})"
+            else:
+                label = f"v₀ = {velocity} m/s"
         else:
-            label = f"File {i+1}"
+            label = f"Analysis {i+1}"
 
         plt.plot(
             analysis.t_eval, analysis.all_collisions_count, label=label, color=color
