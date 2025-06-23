@@ -188,10 +188,10 @@ def dt_sensitivity_analysis(files, particle_id, t_max):
     valid_std = dt_stds[valid_mask]
 
     plt.loglog(valid_dt, valid_std, "o-", color="blue", linewidth=2, markersize=6)
-    
+
     # Format optimal_dt using the same format_func
     optimal_dt_formatted = format_func(optimal_dt, None)
-    
+
     plt.axvline(
         x=optimal_dt,
         color="red",
@@ -253,7 +253,7 @@ def format_func(value, _):
     if value == 0 or np.isclose(value, 0):
         return "0"
     try:
-        exp = int(np.log10(abs(value)))
+        exp = int(np.floor(np.log10(abs(value))))
         mantissa = value / (10**exp)
         if exp == 0:
             return f"{mantissa:.1f}"
