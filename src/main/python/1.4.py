@@ -199,8 +199,8 @@ def dt_sensitivity_analysis(files, particle_id, t_max):
         linewidth=2,
         label=f"dt óptimo = {optimal_dt_formatted} s",
     )
-    plt.xlabel("dt_bin (s)", fontsize=12)
-    plt.ylabel("Desviación estándar DCM (m²)", fontsize=12)
+    plt.xlabel("dt [s]", fontsize=12)
+    plt.ylabel("Desviación estándar DCM [m²]", fontsize=12)
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
