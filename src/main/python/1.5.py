@@ -200,27 +200,43 @@ def run_dcm_vs_temp_analysis(args, files_by_velocity):
             continue
 
         group_temps = [calculate_mean_temperature(f, args.skip_time) for f in files]
-        group_dcms_at_tmax = []
+        
+        # Calculate DCM slope (diffusion coefficient) for this velocity group
+        dcms_by_time = defaultdict(list)
         for file in files:
             times, positions = load_positions(file, args.particle_id)
-            if len(times) > 1:
-                mask = times <= t_max
-                times_trunc = times[mask]
-                positions_trunc = positions[mask]
+            if len(times) < 2: continue
+            mask = times <= t_max
+            times, positions = times[mask], positions[mask]
+            if len(times) < 2: continue
+            
+            initial_pos = positions[0]
+            dcm = np.sum((positions - initial_pos)**2, axis=1)
+            binned = group_by_time_bin(times, dcm, args.dt_bin)
+            for t_bin, z2 in binned.items(): 
+                dcms_by_time[t_bin].extend(z2)
 
-                if len(positions_trunc) > 1:
-                    group_dcms_at_tmax.append(np.sum((positions_trunc[-1] - positions_trunc[0])**2))
+        group_diffusion_coeffs = []
+        if dcms_by_time:
+            sorted_times = np.array(sorted(dcms_by_time.keys()))
+            mean_dcm = np.array([np.mean(dcms_by_time[t]) for t in sorted_times])
+            
+            # Calculate diffusion coefficient (slope)
+            slope = np.sum(sorted_times * mean_dcm) / np.sum(sorted_times**2)
+            D = slope / 4
+            
+            group_diffusion_coeffs.append(D)
 
-        if group_temps and group_dcms_at_tmax:
+        if group_temps and group_diffusion_coeffs:
             plot_data.append({
                 'temp': np.mean(group_temps),
-                'dcm': np.mean(group_dcms_at_tmax),
-                'std': np.std(group_dcms_at_tmax),
+                'dcm': np.mean(group_diffusion_coeffs),
+                'std': np.std(group_diffusion_coeffs) if len(group_diffusion_coeffs) > 1 else 0,
                 'v0': velocity
             })
             print(f"Temperatura media: {np.mean(group_temps):.4f} K")
-            print(f"DCM promedio: {np.mean(group_dcms_at_tmax):.4f} m²")
-            print(f"Desviación estándar: {np.std(group_dcms_at_tmax):.4f} m²")
+            print(f"Coeficiente de difusión promedio: {np.mean(group_diffusion_coeffs):.6e} m²/s")
+            print(f"Desviación estándar: {np.std(group_diffusion_coeffs) if len(group_diffusion_coeffs) > 1 else 0:.6e} m²/s")
 
     if not plot_data:
         print("\nError: No se pudieron procesar datos para generar el gráfico.")
